@@ -6,8 +6,8 @@ export default function Page() {
       <View style={styles.main}>
         <Text style={styles.title}>Página Inicial</Text>
         <Text style={styles.subtitle}>Pré-requisito para a disciplina de DDM</Text>
-         <Text style={styles.subtitlee}>Pré-requisito para a disciplina de DDM</Text>
-          <Text style={styles.subtitleee}>Pré-requisito para a disciplina de DDM</Text>
+         <Text style={styles.subtitle}>Pré-requisito para a disciplina de DDM</Text>
+          <Text style={styles.subtitle}>Pré-requisito para a disciplina de DDM</Text>
       </View>
     </View>
   );
@@ -27,23 +27,12 @@ const styles = StyleSheet.create({
     marginHorizontal: "auto",
   },
   title: {
-    fontSize: 64,
-    fontWeight: "bold",
+    fontSize: 64, 
     fontFamily: "PixelBold" 
   },
   subtitle: {
     fontSize: 36,
     color: "#38434D",
     fontFamily: "PixelMedium"
-  },
-   subtitlee: {
-    fontSize: 36,
-    color: "#38434D",
-    fontFamily: "PixelRegular"
-  },
-   subtitleee: {
-    fontSize: 36,
-    color: "#38434D",
-    fontFamily: "PixelSemiBold"
-  },
+  }, 
 });
