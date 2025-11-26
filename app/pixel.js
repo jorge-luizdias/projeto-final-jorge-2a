@@ -1,477 +1,437 @@
-// PixelPage.js
+// app/pixel.js
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
+  Text,
   TouchableOpacity,
   StyleSheet,
-  PanResponder,
   SafeAreaView,
   ScrollView,
-  Text,
+  PanResponder,
+  Alert,
   Platform,
 } from "react-native";
+import Svg, { Rect } from "react-native-svg";
+import { Feather } from "@expo/vector-icons";
 
-/*
-  Componente unificado para Web + Mobile.
-  - Usa locationX/locationY quando possível.
-  - Para web, usa getBoundingClientRect() para converter clientX/clientY em coords relativos.
-  - Para RN, usa onLayout para pegar posição do canvas (apenas para medidas se necessário).
-*/
+const GRID = 16; // 16 × 16
+const CELL = 22; // tamanho de cada pixel
+const HISTORY_LIMIT = 300;
 
-const GRID = 24;     // número de pixels por lado (aumente/diminua)
-const PIXEL = 20;    // tamanho do pixel em px -> controla o tamanho do canvas
+const PRIMARY_COLORS = [
+  "#000000",
+  "#FFFFFF",
+  "#FF0000",
+  "#00FF00",
+  "#0000FF",
+  "#FFFF00",
+  "#FF00FF",
+  "#00FFFF",
+];
 
-export default function PixelPage() {
-  const [pixels, setPixels] = useState(
-    Array.from({ length: GRID }, () => Array(GRID).fill("transparent"))
-  );
+const VARIATIONS = [
+  "#FFA500",
+  "#808080",
+  "#F2C6A0",
+  "#E67E22",
+  "#FF6B6B",
+  "#FF9472",
+  "#FFD166",
+  "#A29BFE",
+];
 
+export default function PixelArtEditor() {
+  const [pixels, setPixels] = useState(Array(GRID * GRID).fill("#FFFFFF"));
+  const pixelsRef = useRef(pixels);
+  pixelsRef.current = pixels;
+
+  const [selectedColor, setSelectedColor] = useState("#000000");
   const [tool, setTool] = useState("brush"); // 'brush' | 'eraser' | 'fill'
   const [brushSize, setBrushSize] = useState(1);
-  const [color, setColor] = useState("#000000");
 
-  const canvasRef = useRef(null);
-  const rectRef = useRef(null); // guarda bounding rect no web
-  const isDrawing = useRef(false);
+  // history (snapshots)
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
 
-  // paleta
-  const PALETTE = [
-    "#000000",
-    "#ffffff",
-    "#ff0000",
-    "#ff7f00",
-    "#ffff00",
-    "#00ff00",
-    "#00ffff",
-    "#0000ff",
-    "#8b00ff",
-    "#ff00aa",
-    "#777777",
-    "#aaaaaa",
-  ];
+  // ensure initial snapshot
+  useEffect(() => {
+    pushHistorySnapshot(); // initial state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Função para clonar a matriz (imutable)
-  const clonePixels = old =>
-    old.map(row => {
-      return [...row];
-    });
+  function pushHistorySnapshot() {
+    // cut forward history if we are in the middle
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+    }
+    const snap = pixelsRef.current.slice();
+    historyRef.current.push(snap);
+    if (historyRef.current.length > HISTORY_LIMIT) historyRef.current.shift();
+    historyIndexRef.current = historyRef.current.length - 1;
+  }
 
-  // Pinta com brush (considera brushSize)
-  const paintAt = (x, y) => {
-    if (x < 0 || x >= GRID || y < 0 || y >= GRID) return;
+  function canUndo() {
+    return historyIndexRef.current > 0;
+  }
+  function canRedo() {
+    return historyIndexRef.current < historyRef.current.length - 1;
+  }
 
-    const newPixels = clonePixels(pixels);
+  function undo() {
+    if (!canUndo()) return;
+    historyIndexRef.current = Math.max(0, historyIndexRef.current - 1);
+    const snap = historyRef.current[historyIndexRef.current];
+    setPixels(snap.slice());
+  }
 
-    for (let dy = 0; dy < brushSize; dy++) {
-      for (let dx = 0; dx < brushSize; dx++) {
-        const px = x + dx;
-        const py = y + dy;
-        if (px >= 0 && px < GRID && py >= 0 && py < GRID) {
-          newPixels[py][px] = tool === "eraser" ? "transparent" : color;
+  function redo() {
+    if (!canRedo()) return;
+    historyIndexRef.current = Math.min(historyRef.current.length - 1, historyIndexRef.current + 1);
+    const snap = historyRef.current[historyIndexRef.current];
+    setPixels(snap.slice());
+  }
+
+  // helpers coord/index
+  function idxToRC(index) {
+    return { r: Math.floor(index / GRID), c: index % GRID };
+  }
+  function rcToIdx(r, c) {
+    return r * GRID + c;
+  }
+
+  // brush behaviour (option A: expands right and down)
+  function applyBrushAtIndex(index, color, size = 1, commit = true) {
+    const { r, c } = idxToRC(index);
+    const newGrid = pixelsRef.current.slice();
+    for (let dr = 0; dr < size; dr++) {
+      for (let dc = 0; dc < size; dc++) {
+        const rr = r + dr;
+        const cc = c + dc;
+        if (rr >= 0 && rr < GRID && cc >= 0 && cc < GRID) {
+          newGrid[rcToIdx(rr, cc)] = color;
         }
       }
     }
+    if (commit) setPixels(newGrid);
+    return newGrid;
+  }
 
-    setPixels(newPixels);
-  };
+  // fill all
+  function fillAllWithColor(color) {
+    pushHistorySnapshot();
+    setPixels(Array(GRID * GRID).fill(color));
+  }
 
-  // Fill (flood fill)
-  const fillBucket = (sx, sy) => {
-    if (sx < 0 || sx >= GRID || sy < 0 || sy >= GRID) return;
-    const target = pixels[sy][sx];
-    const replacement = tool === "eraser" ? "transparent" : color;
-    if (target === replacement) return;
+  // clear all (with confirm)
+  function clearAll() {
+    Alert.alert("Limpar tudo?", "Deseja realmente limpar toda a tela?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Sim",
+        style: "destructive",
+        onPress: () => {
+          pushHistorySnapshot();
+          setPixels(Array(GRID * GRID).fill("#FFFFFF"));
+        },
+      },
+    ]);
+  }
 
-    const newPixels = clonePixels(pixels);
-    const stack = [[sx, sy]];
+  // handle touches: locX/locY relative to SVG wrapper
+  function handleTouchAtLocation(locX, locY, isStart = false) {
+    const col = Math.floor(locX / CELL);
+    const row = Math.floor(locY / CELL);
+    if (col < 0 || col >= GRID || row < 0 || row >= GRID) return;
+    const index = rcToIdx(row, col);
 
-    while (stack.length) {
-      const [cx, cy] = stack.pop();
-      if (cx < 0 || cx >= GRID || cy < 0 || cy >= GRID) continue;
-      if (newPixels[cy][cx] !== target) continue;
+    if (isStart) pushHistorySnapshot();
 
-      newPixels[cy][cx] = replacement;
-
-      stack.push([cx + 1, cy]);
-      stack.push([cx - 1, cy]);
-      stack.push([cx, cy + 1]);
-      stack.push([cx, cy - 1]);
+    if (tool === "brush") {
+      applyBrushAtIndex(index, selectedColor, brushSize);
+    } else if (tool === "eraser") {
+      applyBrushAtIndex(index, "#FFFFFF", brushSize);
+    } else if (tool === "fill" && isStart) {
+      // current behavior: fill entire canvas with selected color
+      fillAllWithColor(selectedColor);
     }
+  }
 
-    setPixels(newPixels);
-  };
-
-  // Converte evento para coordenadas do grid (x,y)
-  const getGridCoordsFromEvent = evt => {
-    // 1) React Native touch events often provide locationX/locationY relative to the target
-    if (evt && evt.nativeEvent && typeof evt.nativeEvent.locationX === "number") {
-      const lx = evt.nativeEvent.locationX;
-      const ly = evt.nativeEvent.locationY;
-      const gx = Math.floor(lx / PIXEL);
-      const gy = Math.floor(ly / PIXEL);
-      return { x: gx, y: gy };
-    }
-
-    // 2) Web: use clientX/clientY with bounding rect
-    try {
-      if (canvasRef.current && canvasRef.current.getBoundingClientRect) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        // evt might be a native browser MouseEvent or a React synthetic event with clientX
-        const clientX = evt.clientX ?? (evt.nativeEvent && evt.nativeEvent.clientX);
-        const clientY = evt.clientY ?? (evt.nativeEvent && evt.nativeEvent.clientY);
-        if (typeof clientX === "number" && typeof clientY === "number") {
-          const lx = clientX - rect.left;
-          const ly = clientY - rect.top;
-          const gx = Math.floor(lx / PIXEL);
-          const gy = Math.floor(ly / PIXEL);
-          return { x: gx, y: gy };
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-
-    // fallback: (0,0)
-    return { x: -1, y: -1 };
-  };
-
-  // Handler único que decide entre paint e fill
-  const handlePointer = (evt, isStart = false) => {
-    const { x, y } = getGridCoordsFromEvent(evt);
-    if (x < 0 || y < 0 || x >= GRID || y >= GRID) return;
-
-    if (isStart && tool === "fill") {
-      fillBucket(x, y);
-    } else if (tool === "fill" && !isStart) {
-      // não pinta ao arrastar quando a ferramenta é fill
-      return;
-    } else {
-      paintAt(x, y);
-    }
-  };
-
-  // ---- PANRESPONDER para React Native ----
+  // PanResponder for mobile drag painting
+  const isDrawingRef = useRef(false);
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onPanResponderGrant: e => {
-        isDrawing.current = true;
-        handlePointer(e, true);
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        isDrawingRef.current = true;
+        const { locationX, locationY } = evt.nativeEvent;
+        handleTouchAtLocation(locationX, locationY, true);
       },
-      onPanResponderMove: e => {
-        if (!isDrawing.current) return;
-        handlePointer(e, false);
+      onPanResponderMove: (evt) => {
+        if (!isDrawingRef.current) return;
+        const { locationX, locationY } = evt.nativeEvent;
+        handleTouchAtLocation(locationX, locationY, false);
       },
       onPanResponderRelease: () => {
-        isDrawing.current = false;
+        isDrawingRef.current = false;
       },
       onPanResponderTerminate: () => {
-        isDrawing.current = false;
+        isDrawingRef.current = false;
       },
     })
   ).current;
 
-  // ---- Eventos para Web (mouse) ----
-  useEffect(() => {
-    if (Platform.OS === "web" && canvasRef.current) {
-      const node = canvasRef.current;
-      let mouseDown = false;
+  // rect press (web click)
+  function handleRectPress(index) {
+    pushHistorySnapshot();
+    if (tool === "brush") applyBrushAtIndex(index, selectedColor, brushSize);
+    else if (tool === "eraser") applyBrushAtIndex(index, "#FFFFFF", brushSize);
+    else if (tool === "fill") fillAllWithColor(selectedColor);
+  }
 
-      const onMouseDown = e => {
-        mouseDown = true;
-        isDrawing.current = true;
-        handlePointer(e, true);
-      };
-      const onMouseMove = e => {
-        if (!mouseDown) return;
-        handlePointer(e, false);
-      };
-      const onMouseUp = e => {
-        mouseDown = false;
-        isDrawing.current = false;
-      };
+  // UI helpers
+  function ColorButton({ color }) {
+    const active = color.toLowerCase() === selectedColor.toLowerCase();
+    return (
+      <TouchableOpacity
+        key={color}
+        onPress={() => {
+          setSelectedColor(color);
+          setTool("brush");
+        }}
+        style={[
+          styles.color,
+          { backgroundColor: color },
+          active && styles.colorSelected,
+        ]}
+        activeOpacity={0.8}
+      />
+    );
+  }
 
-      node.addEventListener("mousedown", onMouseDown);
-      window.addEventListener("mousemove", onMouseMove);
-      window.addEventListener("mouseup", onMouseUp);
-
-      // save bounding rect for performance (optional)
-      const updateRect = () => {
-        if (node.getBoundingClientRect) {
-          rectRef.current = node.getBoundingClientRect();
-        }
-      };
-      updateRect();
-      window.addEventListener("resize", updateRect);
-
-      return () => {
-        node.removeEventListener("mousedown", onMouseDown);
-        window.removeEventListener("mousemove", onMouseMove);
-        window.removeEventListener("mouseup", onMouseUp);
-        window.removeEventListener("resize", updateRect);
-      };
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasRef.current, tool, brushSize, color, pixels]);
-
-  // centraliza e aumenta: container estilizado no stylesheet
+  // single icon button
+  function IconBtn({ onPress, icon, active = false }) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        style={[styles.iconBtn, active && styles.iconBtnActive]}
+        activeOpacity={0.85}
+      >
+        {icon}
+      </TouchableOpacity>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.appRow}>
-        {/* Toolbar esquerda */}
-        <View style={styles.tools}>
-          <TouchableOpacity
-            style={[styles.toolBtn, tool === "brush" && styles.active]}
-            onPress={() => setTool("brush")}
+    <SafeAreaView style={styles.app}>
+      <View style={styles.centerWrap}>
+        {/* Title */}
+        <Text style={styles.title}>Pixel Editor</Text>
+
+        {/* Grid (svg) */}
+        <View
+          style={styles.canvasWrapper}
+          {...(Platform.OS !== "web" ? panResponder.panHandlers : {})}
+        >
+          <Svg width={GRID * CELL} height={GRID * CELL} style={styles.svg}>
+            {pixels.map((color, index) => {
+              const x = (index % GRID) * CELL;
+              const y = Math.floor(index / GRID) * CELL;
+              return (
+                <Rect
+                  key={index}
+                  x={x}
+                  y={y}
+                  width={CELL}
+                  height={CELL}
+                  fill={color}
+                  stroke="#bdbdbd"
+                  strokeWidth={0.5}
+                  onPress={() => handleRectPress(index)}
+                />
+              );
+            })}
+          </Svg>
+        </View>
+
+        {/* TOOLBAR (single horizontal, icons only) */}
+        <View style={styles.toolbarContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.toolbarScroll}
           >
-            <Text style={styles.toolText}>Brush</Text>
-          </TouchableOpacity>
+            <IconBtn
+              onPress={() => setTool("brush")}
+              active={tool === "brush"}
+              icon={<Feather name="edit" size={20} color={tool === "brush" ? "#ff33bb" : "#fff"} />}
+            />
+            <IconBtn
+              onPress={() => setTool("eraser")}
+              active={tool === "eraser"}
+              icon={<Feather name="trash-2" size={20} color={tool === "eraser" ? "#ff33bb" : "#fff"} />}
+            />
+            <IconBtn
+              onPress={() => {
+                setTool("fill");
+              }}
+              active={tool === "fill"}
+              icon={<Feather name="droplet" size={20} color={tool === "fill" ? "#ff33bb" : "#fff"} />}
+            />
+            <IconBtn
+              onPress={() => undo()}
+              icon={<Feather name="corner-up-left" size={20} color="#fff" />}
+            />
+            <IconBtn
+              onPress={() => redo()}
+              icon={<Feather name="corner-up-right" size={20} color="#fff" />}
+            />
+            <IconBtn
+              onPress={() => {
+                pushHistorySnapshot();
+                setPixels(Array(GRID * GRID).fill("#FFFFFF"));
+              }}
+              icon={<Feather name="trash" size={20} color="#fff" />}
+            />
+            {/* quick size badges */}
+            <IconBtn
+              onPress={() => {
+                setBrushSize(1);
+                setTool("brush");
+              }}
+              active={brushSize === 1}
+              icon={<Text style={styles.sizeTxt}>1</Text>}
+            />
+            <IconBtn
+              onPress={() => {
+                setBrushSize(2);
+                setTool("brush");
+              }}
+              active={brushSize === 2}
+              icon={<Text style={styles.sizeTxt}>2</Text>}
+            />
+            <IconBtn
+              onPress={() => {
+                setBrushSize(3);
+                setTool("brush");
+              }}
+              active={brushSize === 3}
+              icon={<Text style={styles.sizeTxt}>3</Text>}
+            />
+            <View style={{ width: 12 }} />
+          </ScrollView>
+        </View>
 
-          <TouchableOpacity
-            style={[styles.toolBtn, tool === "eraser" && styles.active]}
-            onPress={() => setTool("eraser")}
-          >
-            <Text style={styles.toolText}>Eraser</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.toolBtn, tool === "fill" && styles.active]}
-            onPress={() => setTool("fill")}
-          >
-            <Text style={styles.toolText}>Fill</Text>
-          </TouchableOpacity>
-
-          <View style={styles.sep} />
-
-          <Text style={styles.label}>Brush size</Text>
-          <View style={styles.brushSizes}>
-            {[1, 2, 3].map(size => (
-              <TouchableOpacity
-                key={size}
-                style={[
-                  styles.brushDot,
-                  brushSize === size && styles.activeBrush,
-                ]}
-                onPress={() => setBrushSize(size)}
-              />
+        {/* PALETTE (below toolbar) */}
+        <View style={styles.paletteWrap}>
+          <View style={styles.paletteRow}>
+            {PRIMARY_COLORS.map((c) => (
+              <ColorButton key={c} color={c} selected={selectedColor} onPress={() => { setSelectedColor(c); setTool("brush"); }} />
+            ))}
+          </View>
+          <View style={[styles.paletteRow, { marginTop: 8 }]}>
+            {VARIATIONS.map((c) => (
+              <ColorButton key={c} color={c} selected={selectedColor} onPress={() => { setSelectedColor(c); setTool("brush"); }} />
             ))}
           </View>
         </View>
 
-        {/* Area central do canvas */}
-        <View style={styles.centerArea}>
-          <View style={styles.canvasWrapper}>
-            {/* Container do canvas — usamos ref para web; em RN panResponder é aplicado aqui */}
-            <View
-              ref={canvasRef}
-              style={[
-                styles.canvasContainer,
-                { width: GRID * PIXEL, height: GRID * PIXEL },
-              ]}
-              {...(Platform.OS !== "web" ? panResponder.panHandlers : {})}
-              onLayout={() => {
-                // para RN: podemos usar onLayout se precisar de medidas
-                // no web usamos getBoundingClientRect diretamente
-              }}
-            >
-              {/* Grid de pixels */}
-              <View style={styles.canvas}>
-                {pixels.map((row, ry) => (
-                  <View key={ry} style={styles.row}>
-                    {row.map((col, rx) => (
-                      <View
-                        key={rx}
-                        style={[
-                          styles.pixel,
-                          {
-                            width: PIXEL,
-                            height: PIXEL,
-                            backgroundColor: col,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Paleta e ações abaixo do canvas */}
-          <View style={styles.controlsRow}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.palette}>
-              {PALETTE.map(c => (
-                <TouchableOpacity
-                  key={c}
-                  onPress={() => setColor(c)}
-                  style={[
-                    styles.color,
-                    { backgroundColor: c },
-                    color === c && styles.selectedColor,
-                  ]}
-                />
-              ))}
-            </ScrollView>
-
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={() =>
-                  setPixels(Array.from({ length: GRID }, () => Array(GRID).fill("transparent")))
-                }
-              >
-                <Text style={styles.actionText}>Clear</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={() => {
-                  // inverter cores para visualizar (exemplo)
-                  const inverted = clonePixels(pixels).map(row =>
-                    row.map(cell => (cell === "transparent" ? "#ffffff" : cell))
-                  );
-                  setPixels(inverted);
-                }}
-              >
-                <Text style={styles.actionText}>Example</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        {/* CLEAR centered (big red) */}
+        <View style={{ marginTop: 16, marginBottom: 28 }}>
+          <TouchableOpacity style={styles.clearBtn} onPress={clearAll} activeOpacity={0.9}>
+            <Text style={styles.clearTxt}>Limpar</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>
   );
 }
 
-// --------- STYLES ----------
+// small helper component used in palette to keep styles consistent
+function ColorButton({ color, selected, onPress }) {
+  const active = selected && color.toLowerCase() === selected.toLowerCase();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.color, { backgroundColor: color }, active && styles.colorSelected]}
+      activeOpacity={0.85}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#1b1b1b",
-  },
-  appRow: {
-    flex: 1,
-    flexDirection: "row",
-    padding: 12,
-  },
+  app: { flex: 1, backgroundColor: "#171717" },
+  centerWrap: { alignItems: "center", paddingTop: 12 },
 
-  // TOOLS (left)
-  tools: {
-    width: 92,
-    backgroundColor: "#0f0f0f",
-    borderRadius: 10,
-    padding: 8,
-    alignItems: "center",
-    marginRight: 12,
-  },
-  toolBtn: {
-    width: 70,
-    height: 42,
-    backgroundColor: "#222",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    marginVertical: 6,
-  },
-  active: {
-    borderWidth: 2,
-    borderColor: "#ff33bb",
-  },
-  toolText: {
-    color: "#fff",
-    fontSize: 12,
-  },
-  sep: {
-    height: 10,
-  },
-  label: {
-    color: "#ccc",
-    fontSize: 11,
-    marginTop: 8,
-  },
-  brushSizes: {
-    marginTop: 8,
-    alignItems: "center",
-  },
-  brushDot: {
-    width: 22,
-    height: 22,
-    backgroundColor: "#444",
-    marginVertical: 6,
-    borderRadius: 6,
-  },
-  activeBrush: {
-    backgroundColor: "#ff33bb",
-  },
+  title: { color: "#fff", fontSize: 20, fontWeight: "700", marginBottom: 10 },
 
-  // center area
-  centerArea: {
-    flex: 1,
-    alignItems: "center",
-  },
   canvasWrapper: {
-    marginTop: 6,
-    backgroundColor: "#ccc",
-    padding: 6,
-    borderRadius: 10,
-    // força a área de trabalho ficar centralizada e não empurrar o layout
-    alignItems: "center",
-    justifyContent: "center",
+    width: GRID * CELL + 4,
+    height: GRID * CELL + 4,
+    padding: 2,
+    backgroundColor: "#e6e6e6",
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "#b3b3b3",
   },
-  canvasContainer: {
-    // dimensões definidas inline (GRID*PIXEL)
-    backgroundColor: "#e9e9e9",
+  svg: {
+    backgroundColor: "#fff",
     borderRadius: 6,
-    overflow: "hidden",
-    display: "flex",
-  },
-  canvas: {
-    // o grid é composto de rows
-  },
-  row: {
-    flexDirection: "row",
-  },
-  pixel: {
-    borderWidth: 0.5,
-    borderColor: "#bdbdbd",
   },
 
-  // controls baixo
-  controlsRow: {
+  toolbarContainer: {
     width: "100%",
     marginTop: 12,
     alignItems: "center",
   },
-  palette: {
-    paddingHorizontal: 8,
+  toolbarScroll: {
+    paddingHorizontal: 10,
     paddingVertical: 6,
+    alignItems: "center",
   },
+  iconBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    backgroundColor: "#0f0f0f",
+    marginHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.03)",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    elevation: 3,
+  },
+  iconBtnActive: {
+    borderColor: "#ff33bb",
+    shadowColor: "#ff33bb",
+  },
+  sizeTxt: { color: "#fff", fontWeight: "700", fontSize: 14 },
+
+  paletteWrap: { width: "100%", alignItems: "center", marginTop: 10 },
+  paletteRow: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   color: {
     width: 36,
     height: 36,
-    marginHorizontal: 6,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#00000000",
-  },
-  selectedColor: {
-    borderColor: "#fff",
-    borderWidth: 2,
-  },
-  actionButtons: {
-    flexDirection: "row",
-    marginTop: 10,
-  },
-  actionBtn: {
-    backgroundColor: "#222",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginHorizontal: 6,
     borderRadius: 8,
+    marginHorizontal: 8,
+    borderWidth: 2,
+    borderColor: "transparent",
   },
-  actionText: {
-    color: "#fff",
-    fontSize: 13,
+  colorSelected: {
+    borderColor: "#fff",
+    borderWidth: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
   },
+
+  clearBtn: {
+    backgroundColor: "#c62828",
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  clearTxt: { color: "#fff", fontWeight: "700" },
 });
