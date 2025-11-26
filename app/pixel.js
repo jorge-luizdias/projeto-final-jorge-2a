@@ -10,13 +10,14 @@ import {
   PanResponder,
   Alert,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import { Feather } from "@expo/vector-icons";
 
-const GRID = 16; // 16 × 16
-const CELL = 22; // tamanho de cada pixel
-const HISTORY_LIMIT = 300;
+const GRID = 64;             // <- agora 64 × 64
+const BASE_CANVAS_MAX = 480; // tamanho ideal para caber na tela
+const HISTORY_LIMIT = 600;
 
 const PRIMARY_COLORS = [
   "#000000",
@@ -41,68 +42,69 @@ const VARIATIONS = [
 ];
 
 export default function PixelArtEditor() {
+  const { width: windowWidth } = useWindowDimensions();
+
+  // proteção para celular
+  const maxCanvasWidth = Math.min(windowWidth - 20, BASE_CANVAS_MAX);
+  const cellSize = Math.max(10, Math.floor(maxCanvasWidth / GRID));
+  const canvasSize = cellSize * GRID;
+
   const [pixels, setPixels] = useState(Array(GRID * GRID).fill("#FFFFFF"));
   const pixelsRef = useRef(pixels);
   pixelsRef.current = pixels;
 
   const [selectedColor, setSelectedColor] = useState("#000000");
-  const [tool, setTool] = useState("brush"); // 'brush' | 'eraser' | 'fill'
+  const [tool, setTool] = useState("brush");
   const [brushSize, setBrushSize] = useState(1);
 
-  // history (snapshots)
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
 
-  // ensure initial snapshot
   useEffect(() => {
-    pushHistorySnapshot(); // initial state
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    pushHistorySnapshot();
   }, []);
 
   function pushHistorySnapshot() {
-    // cut forward history if we are in the middle
     if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+      historyRef.current = historyRef.current.slice(
+        0,
+        historyIndexRef.current + 1
+      );
     }
+
     const snap = pixelsRef.current.slice();
     historyRef.current.push(snap);
     if (historyRef.current.length > HISTORY_LIMIT) historyRef.current.shift();
     historyIndexRef.current = historyRef.current.length - 1;
   }
 
-  function canUndo() {
-    return historyIndexRef.current > 0;
-  }
-  function canRedo() {
-    return historyIndexRef.current < historyRef.current.length - 1;
-  }
-
   function undo() {
-    if (!canUndo()) return;
-    historyIndexRef.current = Math.max(0, historyIndexRef.current - 1);
-    const snap = historyRef.current[historyIndexRef.current];
-    setPixels(snap.slice());
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current -= 1;
+    setPixels(historyRef.current[historyIndexRef.current].slice());
   }
 
   function redo() {
-    if (!canRedo()) return;
-    historyIndexRef.current = Math.min(historyRef.current.length - 1, historyIndexRef.current + 1);
-    const snap = historyRef.current[historyIndexRef.current];
-    setPixels(snap.slice());
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current += 1;
+    setPixels(historyRef.current[historyIndexRef.current].slice());
   }
 
-  // helpers coord/index
-  function idxToRC(index) {
-    return { r: Math.floor(index / GRID), c: index % GRID };
-  }
   function rcToIdx(r, c) {
     return r * GRID + c;
   }
 
-  // brush behaviour (option A: expands right and down)
-  function applyBrushAtIndex(index, color, size = 1, commit = true) {
+  function idxToRC(index) {
+    return {
+      r: Math.floor(index / GRID),
+      c: index % GRID,
+    };
+  }
+
+  function applyBrush(index, color, size = 1) {
     const { r, c } = idxToRC(index);
     const newGrid = pixelsRef.current.slice();
+
     for (let dr = 0; dr < size; dr++) {
       for (let dc = 0; dc < size; dc++) {
         const rr = r + dr;
@@ -112,19 +114,17 @@ export default function PixelArtEditor() {
         }
       }
     }
-    if (commit) setPixels(newGrid);
-    return newGrid;
+
+    setPixels(newGrid);
   }
 
-  // fill all
-  function fillAllWithColor(color) {
+  function fillAll(color) {
     pushHistorySnapshot();
     setPixels(Array(GRID * GRID).fill(color));
   }
 
-  // clear all (with confirm)
   function clearAll() {
-    Alert.alert("Limpar tudo?", "Deseja realmente limpar toda a tela?", [
+    Alert.alert("Limpar tudo?", "Tem certeza que deseja limpar tudo?", [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Sim",
@@ -137,26 +137,21 @@ export default function PixelArtEditor() {
     ]);
   }
 
-  // handle touches: locX/locY relative to SVG wrapper
-  function handleTouchAtLocation(locX, locY, isStart = false) {
-    const col = Math.floor(locX / CELL);
-    const row = Math.floor(locY / CELL);
+  function handleTouch(locX, locY, start = false) {
+    const col = Math.floor(locX / cellSize);
+    const row = Math.floor(locY / cellSize);
+
     if (col < 0 || col >= GRID || row < 0 || row >= GRID) return;
+
     const index = rcToIdx(row, col);
 
-    if (isStart) pushHistorySnapshot();
+    if (start) pushHistorySnapshot();
 
-    if (tool === "brush") {
-      applyBrushAtIndex(index, selectedColor, brushSize);
-    } else if (tool === "eraser") {
-      applyBrushAtIndex(index, "#FFFFFF", brushSize);
-    } else if (tool === "fill" && isStart) {
-      // current behavior: fill entire canvas with selected color
-      fillAllWithColor(selectedColor);
-    }
+    if (tool === "brush") applyBrush(index, selectedColor, brushSize);
+    if (tool === "eraser") applyBrush(index, "#FFFFFF", brushSize);
+    if (tool === "fill" && start) fillAll(selectedColor);
   }
 
-  // PanResponder for mobile drag painting
   const isDrawingRef = useRef(false);
   const panResponder = useRef(
     PanResponder.create({
@@ -165,36 +160,33 @@ export default function PixelArtEditor() {
       onPanResponderGrant: (evt) => {
         isDrawingRef.current = true;
         const { locationX, locationY } = evt.nativeEvent;
-        handleTouchAtLocation(locationX, locationY, true);
+        handleTouch(locationX, locationY, true);
       },
       onPanResponderMove: (evt) => {
         if (!isDrawingRef.current) return;
         const { locationX, locationY } = evt.nativeEvent;
-        handleTouchAtLocation(locationX, locationY, false);
+        handleTouch(locationX, locationY, false);
       },
       onPanResponderRelease: () => {
-        isDrawingRef.current = false;
-      },
-      onPanResponderTerminate: () => {
         isDrawingRef.current = false;
       },
     })
   ).current;
 
-  // rect press (web click)
-  function handleRectPress(index) {
-    pushHistorySnapshot();
-    if (tool === "brush") applyBrushAtIndex(index, selectedColor, brushSize);
-    else if (tool === "eraser") applyBrushAtIndex(index, "#FFFFFF", brushSize);
-    else if (tool === "fill") fillAllWithColor(selectedColor);
-  }
-
-  // UI helpers
-  function ColorButton({ color }) {
-    const active = color.toLowerCase() === selectedColor.toLowerCase();
+  function IconBtn({ icon, onPress, active }) {
     return (
       <TouchableOpacity
-        key={color}
+        onPress={onPress}
+        style={[styles.iconBtn, active && styles.iconBtnActive]}
+      >
+        {icon}
+      </TouchableOpacity>
+    );
+  }
+
+  function ColorBtn({ color }) {
+    return (
+      <TouchableOpacity
         onPress={() => {
           setSelectedColor(color);
           setTool("brush");
@@ -202,236 +194,224 @@ export default function PixelArtEditor() {
         style={[
           styles.color,
           { backgroundColor: color },
-          active && styles.colorSelected,
+          selectedColor === color && styles.colorSelected,
         ]}
-        activeOpacity={0.8}
       />
-    );
-  }
-
-  // single icon button
-  function IconBtn({ onPress, icon, active = false }) {
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        style={[styles.iconBtn, active && styles.iconBtnActive]}
-        activeOpacity={0.85}
-      >
-        {icon}
-      </TouchableOpacity>
     );
   }
 
   return (
     <SafeAreaView style={styles.app}>
-      <View style={styles.centerWrap}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Title */}
         <Text style={styles.title}>Pixel Editor</Text>
 
-        {/* Grid (svg) */}
+        {/* Canvas */}
         <View
-          style={styles.canvasWrapper}
+          style={[
+            styles.canvasWrapper,
+            { width: canvasSize + 4, height: canvasSize + 4 },
+          ]}
           {...(Platform.OS !== "web" ? panResponder.panHandlers : {})}
         >
-          <Svg width={GRID * CELL} height={GRID * CELL} style={styles.svg}>
+          <Svg width={canvasSize} height={canvasSize}>
             {pixels.map((color, index) => {
-              const x = (index % GRID) * CELL;
-              const y = Math.floor(index / GRID) * CELL;
+              const x = (index % GRID) * cellSize;
+              const y = Math.floor(index / GRID) * cellSize;
+
               return (
                 <Rect
                   key={index}
                   x={x}
                   y={y}
-                  width={CELL}
-                  height={CELL}
+                  width={cellSize}
+                  height={cellSize}
                   fill={color}
-                  stroke="#bdbdbd"
-                  strokeWidth={0.5}
-                  onPress={() => handleRectPress(index)}
+                  stroke="#999"
+                  strokeWidth={0.7}
+                  onPress={() => {
+                    pushHistorySnapshot();
+                    if (tool === "brush")
+                      applyBrush(index, selectedColor, brushSize);
+                    if (tool === "eraser") applyBrush(index, "#FFFFFF", brushSize);
+                    if (tool === "fill") fillAll(selectedColor);
+                  }}
                 />
               );
             })}
           </Svg>
         </View>
 
-        {/* TOOLBAR (single horizontal, icons only) */}
-        <View style={styles.toolbarContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.toolbarScroll}
-          >
-            <IconBtn
-              onPress={() => setTool("brush")}
-              active={tool === "brush"}
-              icon={<Feather name="edit" size={20} color={tool === "brush" ? "#ff33bb" : "#fff"} />}
-            />
-            <IconBtn
-              onPress={() => setTool("eraser")}
-              active={tool === "eraser"}
-              icon={<Feather name="trash-2" size={20} color={tool === "eraser" ? "#ff33bb" : "#fff"} />}
-            />
-            <IconBtn
-              onPress={() => {
-                setTool("fill");
-              }}
-              active={tool === "fill"}
-              icon={<Feather name="droplet" size={20} color={tool === "fill" ? "#ff33bb" : "#fff"} />}
-            />
-            <IconBtn
-              onPress={() => undo()}
-              icon={<Feather name="corner-up-left" size={20} color="#fff" />}
-            />
-            <IconBtn
-              onPress={() => redo()}
-              icon={<Feather name="corner-up-right" size={20} color="#fff" />}
-            />
-            <IconBtn
-              onPress={() => {
-                pushHistorySnapshot();
-                setPixels(Array(GRID * GRID).fill("#FFFFFF"));
-              }}
-              icon={<Feather name="trash" size={20} color="#fff" />}
-            />
-            {/* quick size badges */}
-            <IconBtn
-              onPress={() => {
-                setBrushSize(1);
-                setTool("brush");
-              }}
-              active={brushSize === 1}
-              icon={<Text style={styles.sizeTxt}>1</Text>}
-            />
-            <IconBtn
-              onPress={() => {
-                setBrushSize(2);
-                setTool("brush");
-              }}
-              active={brushSize === 2}
-              icon={<Text style={styles.sizeTxt}>2</Text>}
-            />
-            <IconBtn
-              onPress={() => {
-                setBrushSize(3);
-                setTool("brush");
-              }}
-              active={brushSize === 3}
-              icon={<Text style={styles.sizeTxt}>3</Text>}
-            />
-            <View style={{ width: 12 }} />
-          </ScrollView>
+        {/* TOOLS */}
+        <View style={styles.toolbar}>
+          <IconBtn
+            active={tool === "brush"}
+            onPress={() => setTool("brush")}
+            icon={<Feather name="edit" size={20} color="#fff" />}
+          />
+          <IconBtn
+            active={tool === "eraser"}
+            onPress={() => setTool("eraser")}
+            icon={<Feather name="trash-2" size={20} color="#fff" />}
+          />
+          <IconBtn
+            active={tool === "fill"}
+            onPress={() => setTool("fill")}
+            icon={<Feather name="droplet" size={20} color="#fff" />}
+          />
+          <IconBtn
+            onPress={undo}
+            icon={<Feather name="corner-up-left" size={20} color="#fff" />}
+          />
+          <IconBtn
+            onPress={redo}
+            icon={<Feather name="corner-up-right" size={20} color="#fff" />}
+          />
         </View>
 
-        {/* PALETTE (below toolbar) */}
-        <View style={styles.paletteWrap}>
+        {/* BRUSH SIZE */}
+        <View style={styles.sizeRow}>
+          {[1, 2, 3].map((n) => (
+            <TouchableOpacity
+              key={n}
+              onPress={() => {
+                setBrushSize(n);
+                setTool("brush");
+              }}
+              style={[styles.sizeBtn, brushSize === n && styles.sizeBtnActive]}
+            >
+              <Text style={styles.sizeTxt}>{n}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* PALETTE */}
+        <View style={styles.palette}>
           <View style={styles.paletteRow}>
             {PRIMARY_COLORS.map((c) => (
-              <ColorButton key={c} color={c} selected={selectedColor} onPress={() => { setSelectedColor(c); setTool("brush"); }} />
+              <ColorBtn color={c} key={c} />
             ))}
           </View>
-          <View style={[styles.paletteRow, { marginTop: 8 }]}>
+          <View style={styles.paletteRow}>
             {VARIATIONS.map((c) => (
-              <ColorButton key={c} color={c} selected={selectedColor} onPress={() => { setSelectedColor(c); setTool("brush"); }} />
+              <ColorBtn color={c} key={c} />
             ))}
           </View>
         </View>
 
-        {/* CLEAR centered (big red) */}
-        <View style={{ marginTop: 16, marginBottom: 28 }}>
-          <TouchableOpacity style={styles.clearBtn} onPress={clearAll} activeOpacity={0.9}>
-            <Text style={styles.clearTxt}>Limpar</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        {/* CLEAR */}
+        <TouchableOpacity style={styles.clearBtn} onPress={clearAll}>
+          <Text style={styles.clearTxt}>Limpar</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
-  );
-}
-
-// small helper component used in palette to keep styles consistent
-function ColorButton({ color, selected, onPress }) {
-  const active = selected && color.toLowerCase() === selected.toLowerCase();
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[styles.color, { backgroundColor: color }, active && styles.colorSelected]}
-      activeOpacity={0.85}
-    />
   );
 }
 
 const styles = StyleSheet.create({
   app: { flex: 1, backgroundColor: "#171717" },
-  centerWrap: { alignItems: "center", paddingTop: 12 },
 
-  title: { color: "#fff", fontSize: 20, fontWeight: "700", marginBottom: 10 },
+  scrollContent: {
+    alignItems: "center",
+    paddingVertical: 20,
+    paddingBottom: 120,
+  },
+
+  title: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 12,
+  },
 
   canvasWrapper: {
-    width: GRID * CELL + 4,
-    height: GRID * CELL + 4,
-    padding: 2,
     backgroundColor: "#e6e6e6",
-    borderRadius: 8,
+    borderRadius: 10,
+    marginBottom: 20,
+    overflow: "hidden",
     borderWidth: 2,
-    borderColor: "#b3b3b3",
-  },
-  svg: {
-    backgroundColor: "#fff",
-    borderRadius: 6,
+    borderColor: "#999",
   },
 
-  toolbarContainer: {
-    width: "100%",
-    marginTop: 12,
-    alignItems: "center",
+  toolbar: {
+    flexDirection: "row",
+    marginBottom: 18,
   },
-  toolbarScroll: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    alignItems: "center",
-  },
+
   iconBtn: {
     width: 56,
     height: 56,
-    borderRadius: 10,
+    borderRadius: 12,
+    marginHorizontal: 6,
     backgroundColor: "#0f0f0f",
-    marginHorizontal: 8,
-    alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.03)",
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    elevation: 3,
+    alignItems: "center",
   },
-  iconBtnActive: {
-    borderColor: "#ff33bb",
-    shadowColor: "#ff33bb",
-  },
-  sizeTxt: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
-  paletteWrap: { width: "100%", alignItems: "center", marginTop: 10 },
-  paletteRow: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
-  color: {
-    width: 36,
-    height: 36,
+  iconBtnActive: {
+    backgroundColor: "#2c2c2c",
+    borderColor: "#ff33bb",
+    borderWidth: 2,
+  },
+
+  sizeRow: {
+    flexDirection: "row",
+    marginBottom: 20,
+  },
+
+  sizeBtn: {
+    width: 42,
+    height: 42,
+    marginHorizontal: 5,
     borderRadius: 8,
-    marginHorizontal: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1f1f1f",
+  },
+
+  sizeBtnActive: {
+    backgroundColor: "#ff33bb",
+  },
+
+  sizeTxt: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+
+  palette: {
+    marginBottom: 24,
+  },
+
+  paletteRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    marginVertical: 4,
+  },
+
+  color: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    marginHorizontal: 6,
     borderWidth: 2,
     borderColor: "transparent",
   },
+
   colorSelected: {
     borderColor: "#fff",
     borderWidth: 3,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
   },
 
   clearBtn: {
     backgroundColor: "#c62828",
-    paddingHorizontal: 22,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 14,
-    alignItems: "center",
   },
-  clearTxt: { color: "#fff", fontWeight: "700" },
+
+  clearTxt: { color: "#fff", fontWeight: "bold", fontSize: 16 },
 });
