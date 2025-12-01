@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View, TouchableOpacity, Image, FlatList } from "react-native";
 import { useState } from "react";
+import { StyleSheet, Text, View, TouchableOpacity, Image, FlatList } from "react-native";
 
 // IMAGENS DE ROSTO
 import rostoGuerreiro from "../assets/rostos/c_guerreiro.png";
@@ -10,7 +10,7 @@ import rostoCorujo from "../assets/rostos/c_corujo.png";
 import rostoKing from "../assets/rostos/c_king.png";
 import rostoPirata from "../assets/rostos/c_pirata.png";
 
-// PERSONAGENS COMPLETOS
+// PERSONAGENS
 import guerreiro from "../assets/guerreiro.png";
 import guerreira from "../assets/guerreira.png";
 import feiticeiro from "../assets/feiticeiro.png";
@@ -31,7 +31,7 @@ const personagens = [
       forca: 8,
       defesa: 9,
       descricao:
-        "Ragnar é um veterano das Terras Cinzentas. Conhecido por sua resistência absurda, ele avança protegendo aliados e absorvendo danos que destruiriam qualquer outro guerreiro.",
+        "Ragnar é um veterano das Terras Cinzentas. Resistência absurda e defesa altíssima.",
     },
   },
   {
@@ -45,7 +45,7 @@ const personagens = [
       forca: 7,
       defesa: 7,
       descricao:
-        "Lyanna domina técnicas acrobáticas e cortes rápidos. Sua precisão é temida em arenas, onde suas combos mortais derrubam inimigos antes mesmo que percebam seu movimento.",
+        "Golpes rápidos e acrobáticos, mortal em combates próximos.",
     },
   },
   {
@@ -59,7 +59,7 @@ const personagens = [
       forca: 10,
       defesa: 3,
       descricao:
-        "Azerion estudou artes proibidas que poucos ousam tocar. Seus feitiços são devastadores, mas seu corpo frágil exige estratégia — um erro de cálculo e ele cai facilmente.",
+        "Feitiços devastadores, mas extremamente frágil.",
     },
   },
   {
@@ -73,7 +73,7 @@ const personagens = [
       forca: 6,
       defesa: 5,
       descricao:
-        "Eridian é conhecida por derrubar inimigos antes que eles percebam sua presença. Sua mira impecável e velocidade a tornam letal em ataques à distância.",
+        "Ataques rápidos à distância e grande precisão.",
     },
   },
   {
@@ -87,7 +87,7 @@ const personagens = [
       forca: 4,
       defesa: 6,
       descricao:
-        "Uma criatura sábia que manipula energia vital. Corujo cura aliados, fortalece a equipe e é essencial em batalhas longas, mantendo todos vivos contra qualquer ameaça.",
+        "Cura aliados e fortalece toda a equipe.",
     },
   },
   {
@@ -101,7 +101,7 @@ const personagens = [
       forca: 9,
       defesa: 8,
       descricao:
-        "King nasceu para a batalha. Seu estilo é simples: destruir tudo no caminho. Seus golpes esmagam inimigos em segundos, sendo um dos maiores danos físicos do reino.",
+        "Puro dano físico e agressividade.",
     },
   },
   {
@@ -115,20 +115,40 @@ const personagens = [
       forca: 7,
       defesa: 4,
       descricao:
-        "Drax se move como um fantasma entre as sombras. Suas lâminas envenenadas e ataques críticos fazem dele o terror dos mares — e um inimigo imprevisível em combate.",
+        "Crítico e veneno, especialista em emboscadas.",
     },
   },
 ];
 
 export default function Page() {
   const [selecionado, setSelecionado] = useState(personagens[0]);
+  const [tela, setTela] = useState("selecao"); // seleção → taverna
+
+  if (tela === "taverna") {
+    return (
+      <View style={styles.taverna}>
+        <Text style={styles.tavernaTitulo}>Taverna de Aetheryon</Text>
+        <Image
+          source={selecionado.imagem}
+          style={{ width: 250, height: 250, resizeMode: "contain" }}
+        />
+        <Text style={styles.tavernaNome}>{selecionado.nome}</Text>
+
+        <TouchableOpacity
+          style={styles.botaoVoltar}
+          onPress={() => setTela("selecao")}
+        >
+          <Text style={{ color: "white", fontSize: 20 }}>Voltar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Seleção de Personagem</Text>
 
       <View style={styles.content}>
-        
         {/* GRID */}
         <View style={styles.gridContainer}>
           <FlatList
@@ -165,13 +185,22 @@ export default function Page() {
             <Text style={styles.infoLinha}>Defesa: {selecionado.info.defesa}/10</Text>
             <Text style={styles.infoDesc}>{selecionado.info.descricao}</Text>
           </View>
-        </View>
 
+          <TouchableOpacity
+            style={styles.botaoSelecionar}
+            onPress={() => setTela("taverna")}
+          >
+            <Text style={{ color: "black", fontSize: 22, fontFamily: "PixelBold" }}>
+              Entrar na Taverna
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
+// ESTILOS
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -199,7 +228,7 @@ const styles = StyleSheet.create({
 
   card: {
     width: "47%",
-    aspectRatio: 1, // deixa sempre quadrado
+    aspectRatio: 1,
     marginBottom: 12,
     borderRadius: 14,
     overflow: "hidden",
@@ -207,25 +236,20 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "transparent",
   },
-  
+
   cardAtivo: {
     borderColor: "#e5c07b",
-    shadowColor: "#e5c07b",
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
   },
-  
+
   cardImg: {
     width: "100%",
     height: "100%",
-    resizeMode: "cover", // <-- AQUI É O SEGREDO (preenche o card inteiro)
+    resizeMode: "cover",
   },
-  
 
   preview: {
     width: "60%",
     alignItems: "center",
-    justifyContent: "flex-start",
   },
 
   previewBox: {
@@ -274,5 +298,42 @@ const styles = StyleSheet.create({
     color: "#cfcfcf",
     fontSize: 14,
     fontFamily: "PixelMedium",
+  },
+
+  botaoSelecionar: {
+    marginTop: 20,
+    backgroundColor: "#e5c07b",
+    paddingVertical: 12,
+    paddingHorizontal: 25,
+    borderRadius: 12,
+  },
+
+  /** TAVERNA */
+  taverna: {
+    flex: 1,
+    backgroundColor: "#0d0d0f",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  tavernaTitulo: {
+    fontSize: 40,
+    color: "white",
+    fontFamily: "PixelBold",
+    marginBottom: 20,
+  },
+
+  tavernaNome: {
+    marginTop: 10,
+    fontSize: 28,
+    color: "white",
+    fontFamily: "PixelBold",
+  },
+
+  botaoVoltar: {
+    marginTop: 25,
+    backgroundColor: "#444",
+    padding: 12,
+    borderRadius: 10,
   },
 });
