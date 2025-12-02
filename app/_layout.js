@@ -78,20 +78,6 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="pagetwo"
-        options={{
-          title: "Pixel Art",
-          tabBarIcon: ({ color, focused }) => (
-            <AntDesign
-              name="appstore"
-              size={focused ? 28 : 22}
-              color={color}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
         name="pixel"
         options={{
           title: "Pixelar",
