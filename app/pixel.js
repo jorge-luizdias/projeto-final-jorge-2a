@@ -10,6 +10,7 @@ import {
   Platform,
   useWindowDimensions,
   Animated,
+  ImageBackground
 } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import { Feather } from "@expo/vector-icons";
@@ -40,13 +41,10 @@ export default function Pixel() {
   function applyZoom(z) {
     const newZoom = Math.max(0.5, Math.min(z, 4));
     setZoom(newZoom);
-    Animated.spring(scale, {
-      toValue: newZoom,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scale, { toValue: newZoom, useNativeDriver: true }).start();
   }
 
-  // refs para evitar closures
+  // refs
   const colorRef = useRef(color);
   const toolRef = useRef(tool);
   useEffect(() => { colorRef.current = color; }, [color]);
@@ -74,7 +72,7 @@ export default function Pixel() {
       duration: 180,
       useNativeDriver: false,
     }).start(() => setTimeout(recalcOffset, 20));
-    setMenuOpen((v) => !v);
+    setMenuOpen(v => !v);
   }
 
   function getPos(evt) {
@@ -83,34 +81,17 @@ export default function Pixel() {
     if (Platform.OS === "web") {
       const ox = ev.offsetX ?? ev.layerX;
       const oy = ev.offsetY ?? ev.layerY;
-      if (typeof ox === "number" && typeof oy === "number")
-        return { x: ox, y: oy };
+      if (typeof ox === "number" && typeof oy === "number") return { x: ox, y: oy };
 
-      const pageX =
-        ev.pageX ??
-        ev.clientX ??
-        (ev.touches && ev.touches[0]?.pageX) ??
-        0;
-      const pageY =
-        ev.pageY ??
-        ev.clientY ??
-        (ev.touches && ev.touches[0]?.pageY) ??
-        0;
+      const pageX = ev.pageX ?? ev.clientX ?? (ev.touches && ev.touches[0]?.pageX) ?? 0;
+      const pageY = ev.pageY ?? ev.clientY ?? (ev.touches && ev.touches[0]?.pageY) ?? 0;
 
       return { x: pageX - offset.current.x, y: pageY - offset.current.y };
     }
 
     return {
-      x:
-        ev.locationX ??
-        (ev.touches && ev.touches[0]?.locationX) ??
-        ev.pageX ??
-        0,
-      y:
-        ev.locationY ??
-        (ev.touches && ev.touches[0]?.locationY) ??
-        ev.pageY ??
-        0,
+      x: ev.locationX ?? ev.pageX ?? 0,
+      y: ev.locationY ?? ev.pageY ?? 0,
     };
   }
 
@@ -120,10 +101,9 @@ export default function Pixel() {
     if (col < 0 || col >= GRID || row < 0 || row >= GRID) return;
 
     const idx = row * GRID + col;
-    const desired =
-      toolRef.current === "eraser" ? "#1e1e1e" : colorRef.current;
+    const desired = toolRef.current === "eraser" ? "#1e1e1e" : colorRef.current;
 
-    setPixels((prev) => {
+    setPixels(prev => {
       if (prev[idx] === desired) return prev;
       const copy = [...prev];
       copy[idx] = desired;
@@ -132,34 +112,27 @@ export default function Pixel() {
   }
 
   const isDrawing = useRef(false);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-
-      onPanResponderGrant: (evt) => {
+      onPanResponderGrant: evt => {
         isDrawing.current = true;
         const pos = getPos(evt);
         paintAt(pos.x, pos.y);
       },
-
-      onPanResponderMove: (evt) => {
+      onPanResponderMove: evt => {
         if (!isDrawing.current) return;
         const pos = getPos(evt);
         paintAt(pos.x, pos.y);
       },
-
-      onPanResponderRelease: () => {
-        isDrawing.current = false;
-      },
-
-      onPanResponderTerminate: () => {
-        isDrawing.current = false;
-      },
+      onPanResponderRelease: () => { isDrawing.current = false; },
+      onPanResponderTerminate: () => { isDrawing.current = false; },
     })
   ).current;
 
-  const onCanvasLayout = (e) => {
+  const onCanvasLayout = e => {
     if (Platform.OS === "web") {
       setTimeout(() => recalcOffset(), 20);
       return;
@@ -175,116 +148,114 @@ export default function Pixel() {
   }, [canvasSize]);
 
   return (
-    <SafeAreaView style={styles.app}>
-      
-      {/* BOTÃO MENU */}
-      <TouchableOpacity style={styles.menuToggle} onPress={toggleMenu}>
-        <Feather name="menu" size={24} color="#fff" />
-      </TouchableOpacity>
+    <ImageBackground
+      source={require("../../projeto-final-jorge-2a/assets/mapa.png")}
+      style={{ flex: 1 }}
+      imageStyle={{ resizeMode: "cover" }}
+    >
+      <SafeAreaView style={styles.app}>
 
-      {/* MENU LATERAL */}
-      <Animated.View style={[styles.leftBar, { width: menuWidth }]}>
-        {menuOpen && (
-          <>
+        {/* BOTÃO MENU */}
+        <TouchableOpacity style={styles.menuToggle} onPress={toggleMenu}>
+          <Feather name="menu" size={24} color="#fff" />
+        </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.toolBtn, tool === "brush" && styles.activeTool]}
-              onPress={() => setTool("brush")}
-            >
-              <Feather name="edit" size={22} color="#fff" />
-            </TouchableOpacity>
+        {/* MENU LATERAL */}
+        <Animated.View style={[styles.leftBar, { width: menuWidth }]}>
+          {menuOpen && (
+            <>
+              <TouchableOpacity
+                style={[styles.toolBtn, tool === "brush" && styles.activeTool]}
+                onPress={() => setTool("brush")}
+              >
+                <Feather name="edit" size={22} color="#fff" />
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.toolBtn, tool === "eraser" && styles.activeTool]}
-              onPress={() => setTool("eraser")}
-            >
-              <Feather name="slash" size={22} color="#fff" />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.toolBtn, tool === "eraser" && styles.activeTool]}
+                onPress={() => setTool("eraser")}
+              >
+                <Feather name="slash" size={22} color="#fff" />
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.toolBtn}
-              onPress={() =>
-                setPixels(new Array(GRID * GRID).fill("#1e1e1e"))
-              }
-            >
-              <Feather name="trash-2" size={22} color="#fff" />
-            </TouchableOpacity>
-          </>
-        )}
-      </Animated.View>
-
-      {/* CANVAS COM ZOOM */}
-      <View style={styles.canvasContainer}>
-        <Animated.View style={{ transform: [{ scale: scale }] }}>
-          <View
-            ref={canvasRef}
-            onLayout={onCanvasLayout}
-            {...panResponder.panHandlers}
-            style={{
-              width: canvasSize,
-              height: canvasSize,
-              backgroundColor: "#000",
-            }}
-          >
-            <Svg width={canvasSize} height={canvasSize}>
-              {pixels.map((c, i) => {
-                const x = (i % GRID) * cellSize;
-                const y = Math.floor(i / GRID) * cellSize;
-                return (
-                  <Rect
-                    key={i}
-                    x={x}
-                    y={y}
-                    width={cellSize}
-                    height={cellSize}
-                    fill={c}
-                  />
-                );
-              })}
-            </Svg>
-          </View>
+              <TouchableOpacity
+                style={styles.toolBtn}
+                onPress={() => setPixels(new Array(GRID * GRID).fill("#1e1e1e"))}
+              >
+                <Feather name="trash-2" size={22} color="#fff" />
+              </TouchableOpacity>
+            </>
+          )}
         </Animated.View>
-      </View>
 
-      {/* BOTÕES DE ZOOM */}
-      <View style={styles.zoomButtons}>
-        <TouchableOpacity
-          onPress={() => applyZoom(zoom + 0.2)}
-          style={styles.zoomBtn}
-        >
-          <Feather name="zoom-in" size={22} color="#fff" />
-        </TouchableOpacity>
+        {/* CANVAS */}
+        <View style={styles.canvasContainer}>
+          <Animated.View style={{ transform: [{ scale: scale }] }}>
+            <View
+              ref={canvasRef}
+              onLayout={onCanvasLayout}
+              {...panResponder.panHandlers}
+              style={{
+                width: canvasSize,
+                height: canvasSize,
+                backgroundColor: "#000",
+              }}
+            >
+              <Svg width={canvasSize} height={canvasSize}>
+                {pixels.map((c, i) => {
+                  const x = (i % GRID) * cellSize;
+                  const y = Math.floor(i / GRID) * cellSize;
+                  return (
+                    <Rect
+                      key={i}
+                      x={x}
+                      y={y}
+                      width={cellSize}
+                      height={cellSize}
+                      fill={c}
+                    />
+                  );
+                })}
+              </Svg>
+            </View>
+          </Animated.View>
+        </View>
 
-        <TouchableOpacity
-          onPress={() => applyZoom(zoom - 0.2)}
-          style={styles.zoomBtn}
-        >
-          <Feather name="zoom-out" size={22} color="#fff" />
-        </TouchableOpacity>
-      </View>
+        {/* ZOOM */}
+        <View style={styles.zoomButtons}>
+          <TouchableOpacity onPress={() => applyZoom(zoom + 0.2)} style={styles.zoomBtn}>
+            <Feather name="zoom-in" size={22} color="#fff" />
+          </TouchableOpacity>
 
-      {/* PALETA */}
-      <View style={styles.colorBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {COLORS.map((c, i) => (
-            <TouchableOpacity
-              key={i}
-              onPress={() => setColor(c)}
-              style={[
-                styles.colorItem,
-                { backgroundColor: c },
-                c === color && styles.selectedColor,
-              ]}
-            />
-          ))}
-        </ScrollView>
-      </View>
-    </SafeAreaView>
+          <TouchableOpacity onPress={() => applyZoom(zoom - 0.2)} style={styles.zoomBtn}>
+            <Feather name="zoom-out" size={22} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* PALETA */}
+        <View style={styles.colorBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {COLORS.map((c, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={() => setColor(c)}
+                style={[
+                  styles.colorItem,
+                  { backgroundColor: c },
+                  c === color && styles.selectedColor,
+                ]}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: "#111", flexDirection: "row" },
+  app: { flex: 1, backgroundColor: "transparent", flexDirection: "row" },
 
   menuToggle: {
     position: "absolute",
@@ -298,18 +269,10 @@ const styles = StyleSheet.create({
 
   leftBar: {
     height: "100%",
-    backgroundColor: "#0d0d0d",
+    backgroundColor: "#0d0d0dde",
     paddingVertical: 18,
     paddingHorizontal: 8,
     overflow: "hidden",
-  },
-
-  sectionTitle: {
-    color: "#fff",
-    marginBottom: 10,
-    fontSize: 14,
-    opacity: 0.7,
-    textAlign: "center",
   },
 
   toolBtn: {
@@ -322,11 +285,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  activeTool: { backgroundColor: "#ff7b6b" },
+  activeTool: { backgroundColor: "#e5c07b" },
 
   canvasContainer: {
     flex: 1,
-    backgroundColor: "#181818",
+    backgroundColor: "#181818aa",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -336,7 +299,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: "100%",
     paddingVertical: 10,
-    backgroundColor: "#0d0d0d",
+    backgroundColor: "#0d0d0dee",
   },
 
   colorItem: {

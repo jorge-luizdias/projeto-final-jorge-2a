@@ -27,12 +27,12 @@ export default function TabLayout() {
           paddingBottom: 10,
           paddingTop: 10,
           elevation: 10,
-          shadowColor: "#ff00e6",
+          shadowColor: "#e5c07b",
           shadowOpacity: 0.2,
           shadowOffset: { width: 0, height: -1 },
         },
 
-        tabBarActiveTintColor: "#ff00e6",
+        tabBarActiveTintColor: "#e5c07b",
         tabBarInactiveTintColor: "#bbb",
 
         tabBarLabelStyle: {

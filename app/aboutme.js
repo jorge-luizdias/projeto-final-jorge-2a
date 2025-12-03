@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, Image, Animated, Easing } from "react-native";
+import { StyleSheet, Text, View, Image, Animated, Easing, ImageBackground, ScrollView } from "react-native";
 import { useEffect, useRef } from "react";
 
 export default function AboutMe() {
@@ -14,104 +14,128 @@ export default function AboutMe() {
   }, []);
 
   return (
-    <View style={styles.container}>
+    <ImageBackground
+      source={require("../../projeto-final-jorge-2a/assets/quarto.png")}
+      style={styles.bg}
+      imageStyle={{ resizeMode: "cover" }}
+    >
+      <View style={styles.container}>
 
-      {/* CARD COMPLETO */}
-      <Animated.View
-        style={[
-          styles.card,
-          {
-            shadowOpacity: glow,
-            borderColor: "#ff00ff",
-          },
-        ]}
-      >
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              shadowOpacity: glow,
+              borderColor: "#e5c07b",
+            },
+          ]}
+        >
+          <ScrollView style={{ width: "100%" }} showsVerticalScrollIndicator={false}>
 
-        {/* FOTO CENTRALIZADA */}
-        <Image
-          source={require("../../projeto-final-jorge-2a/assets/avatar.png")}
-          style={styles.avatar}
-        />
+            <View style={{ alignItems: "center" }}>
+              <Image
+                source={require("../../projeto-final-jorge-2a/assets/avatar.png")}
+                style={styles.avatar}
+              />
 
-        {/* NOME CENTRALIZADO */}
-        <Text style={styles.title}>Jorge Luiz</Text>
+              <Text style={styles.title}>Jorge Luiz</Text>
+            </View>
 
-        {/* CONTEÚDO ALINHADO À ESQUERDA */}
-        <View style={styles.leftBox}>
-          <Text style={styles.text}>
-            Idade: <Text style={styles.norm}>17</Text>
-          </Text>
+            <View style={styles.leftBox}>
+              <Text style={styles.text}>
+                Idade: <Text style={styles.norm}>17</Text>
+              </Text>
 
-          <Text style={styles.text}>
-            Gênero: Masculino
-          </Text>
+              <Text style={styles.text}>Gênero: Masculino</Text>
 
-          <Text style={styles.text}>
-            Passatempo: Desenhar, Jogos e quebra-cabeças.
-          </Text>
-        </View>
+              <Text style={styles.textLong}>
+                Gosto de desenhar, resolver quebra-cabeças e jogar.
+              </Text>
 
-      </Animated.View>
-    </View>
+              <Text style={styles.textLong}>
+                O intuito deste site é proporcionar uma experiência dentro de um jogo,
+                com foco no design pixelado e na interação.
+              </Text>
+            </View>
+
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  bg: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+
   container: {
     flex: 1,
-    backgroundColor: "#080808",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+    backgroundColor: "rgba(0,0,0,0.4)",
   },
 
   card: {
-    width: "80%",
-    maxWidth: 500,
+    width: "80%",              // 🔥 diminui a largura para não quebrar
+    maxWidth: 480,
+    maxHeight: "85%",          // 🔥 evita estourar em telas pequenas
     backgroundColor: "#111",
-    paddingVertical: 30,
-    paddingHorizontal: 25,
-    borderRadius: 20,
+    paddingVertical: 25,
+    paddingHorizontal: 20,
+    borderRadius: 14,
     borderWidth: 3,
-    shadowColor: "#ff00ff",
+    shadowColor: "#e5c07b",
     shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 20,
-    alignItems: "center", // 🔥 garante centralização da foto + nome
+    shadowRadius: 18,
   },
 
   avatar: {
-    width: 150,
-    height: 150,
-    borderRadius: 12,
-    marginBottom: 18,
+    width: 130,
+    height: 130,
+    borderRadius: 4,
+    marginBottom: 15,
     borderWidth: 3,
-    borderColor: "#ff00ff",
+    borderColor: "#e5c07b",
   },
 
   title: {
     fontFamily: "PixelMedium",
-    fontSize: 36,
-    color: "#ff00ff",
-    marginBottom: 22,
-    textAlign: "center", // 🔥 centraliza o nome
+    fontSize: 28,
+    color: "#e5c07b",
+    marginBottom: 18,
+    textAlign: "center",
   },
 
   leftBox: {
-    width: "100%", // 🔥 garante alinhamento à esquerda
+    width: "100%",
+    paddingHorizontal: 3,
   },
 
   text: {
     fontFamily: "PixelMedium",
     fontSize: 18,
-    color: "#d0d0d0",
-    marginBottom: 12,
+    color: "#f0f0f0",
+    marginBottom: 10,
     lineHeight: 26,
-    textAlign: "left",
+  },
+
+  textLong: {
+    fontFamily: "PixelMedium",
+    fontSize: 16,             // 🔥 menor para caber melhor
+    color: "#f0f0f0",
+    marginBottom: 14,
+    lineHeight: 26,
+    textAlign: "justify",     // 🔥 deixa muito mais legível
   },
 
   norm: {
     fontFamily: "Arial",
-    fontSize: 15,
+    fontSize: 16,
     color: "#d0d0d0",
   },
 });
